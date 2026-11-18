@@ -1,0 +1,86 @@
+# Aspire dashboard (OTLP traces/metrics/logs UI) and Mailpit (catches the e-mails the notification service sends).
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+  labels: { app.kubernetes.io/name: dashboard, app.kubernetes.io/part-of: seatflow }
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: dashboard }
+  ports:
+    - name: ui
+      port: 18888
+      nodePort: 30888
+    - name: otlp-grpc
+      port: 18889
+    - name: otlp-http
+      port: 18890
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  labels: { app.kubernetes.io/name: dashboard, app.kubernetes.io/part-of: seatflow }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: dashboard }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: dashboard, app.kubernetes.io/part-of: seatflow }
+    spec:
+      containers:
+        - name: dashboard
+          image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
+          env:
+            - name: ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS
+              value: "true"
+          ports:
+            - containerPort: 18888
+            - containerPort: 18889
+            - containerPort: 18890
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: seatflow }
+spec:
+  type: NodePort
+  selector: { app.kubernetes.io/name: mailpit }
+  ports:
+    - name: smtp
+      port: 1025
+    - name: ui
+      port: 8025
+      nodePort: 30025
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: seatflow }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: mailpit }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: mailpit, app.kubernetes.io/part-of: seatflow }
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.34
+          ports:
+            - containerPort: 1025
+            - containerPort: 8025
+          readinessProbe:
+            exec:
+              command: ["/mailpit", "readyz"]
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }

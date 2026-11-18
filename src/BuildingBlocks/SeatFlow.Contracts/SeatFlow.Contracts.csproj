@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Integration messages shared by the SeatFlow services. No dependencies on purpose.</Description>
+  </PropertyGroup>
+</Project>

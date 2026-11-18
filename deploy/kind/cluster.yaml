@@ -1,0 +1,14 @@
+# kind create cluster --config deploy/kind/cluster.yaml
+# Host ports differ from docker compose so both stacks can run side by side.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: seatflow
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080 # gateway
+        hostPort: 8081
+      - containerPort: 30025 # mailpit UI
+        hostPort: 8026
+      - containerPort: 30888 # Aspire dashboard UI
+        hostPort: 18889

@@ -1,0 +1,170 @@
+name: seatflow
+
+# docker compose up --build --wait   -> everything healthy, gateway on http://localhost:8080
+# Dashboards: Aspire (traces/metrics/logs) http://localhost:18888 Â· RabbitMQ http://localhost:15672 (seatflow/seatflow)
+#             Mailpit (sent e-mails) http://localhost:8025
+
+x-dotnet-env: &dotnet-env
+  ASPNETCORE_ENVIRONMENT: Development
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+  OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+  ConnectionStrings__RabbitMq: amqp://seatflow:seatflow@rabbitmq:5672
+  ConnectionStrings__Redis: redis:6379
+  Auth__MetadataAddress: http://gateway:8080/.well-known/openid-configuration
+  Database__MigrateOnStartup: "true"
+
+x-infra-deps: &infra-deps
+  postgres:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  dashboard:
+    condition: service_started
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - ./deploy/k8s/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - postgres-data:/var/lib/postgresql
+    ports:
+      - "5433:5432"
+    healthcheck:
+      # -h forces TCP: during first-time init the server only listens on the unix socket.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8.8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4.3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: seatflow
+      RABBITMQ_DEFAULT_PASS: seatflow
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:13.6
+    environment:
+      ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"
+    ports:
+      - "18888:18888"
+
+  catalog:
+    build:
+      context: .
+      dockerfile: src/Catalog/SeatFlow.Catalog.Api/Dockerfile
+    image: seatflow/catalog:dev
+    restart: unless-stopped
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Postgres: Host=postgres;Database=catalog;Username=catalog;Password=catalog
+    depends_on: *infra-deps
+
+  booking:
+    build:
+      context: .
+      dockerfile: src/Booking/SeatFlow.Booking.Api/Dockerfile
+    image: seatflow/booking:dev
+    restart: unless-stopped
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Postgres: Host=postgres;Database=booking;Username=booking;Password=booking
+      Booking__HoldTtl: "00:10:00"
+      # Short on purpose so the late-payment refund can be demoed with tok_slow (25 s > 15 s).
+      Booking__PaymentTimeout: "00:00:15"
+      Booking__ExpiryScanInterval: "00:00:02"
+    depends_on: *infra-deps
+
+  payment:
+    build:
+      context: .
+      dockerfile: src/Payment/SeatFlow.Payment.Api/Dockerfile
+    image: seatflow/payment:dev
+    restart: unless-stopped
+    environment:
+      <<: *dotnet-env
+      ConnectionStrings__Postgres: Host=postgres;Database=payment;Username=payment;Password=payment
+      FakeProvider__SlowDelay: "00:00:25"
+    depends_on: *infra-deps
+
+  mailpit:
+    image: axllent/mailpit:v1.34
+    ports:
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  notification:
+    build:
+      context: ./src/Notification
+    image: seatflow/notification:dev
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://notification:notification@postgres:5432/notification
+      RABBITMQ_URL: amqp://seatflow:seatflow@rabbitmq:5672/
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      JWKS_URL: http://gateway:8080/.well-known/jwks.json
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18890
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      dashboard:
+        condition: service_started
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Gateway/SeatFlow.Gateway/Dockerfile
+    image: seatflow/gateway:dev
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://dashboard:18889
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+    ports:
+      - "8080:8080"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      booking:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

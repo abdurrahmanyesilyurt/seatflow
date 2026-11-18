@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/SeatFlow.Contracts/SeatFlow.Contracts.csproj" />
+    <Project Path="src/BuildingBlocks/SeatFlow.Messaging/SeatFlow.Messaging.csproj" />
+    <Project Path="src/BuildingBlocks/SeatFlow.ServiceDefaults/SeatFlow.ServiceDefaults.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/">
+    <Project Path="src/Booking/SeatFlow.Booking.Api/SeatFlow.Booking.Api.csproj" />
+    <Project Path="src/Catalog/SeatFlow.Catalog.Api/SeatFlow.Catalog.Api.csproj" />
+    <Project Path="src/Gateway/SeatFlow.Gateway/SeatFlow.Gateway.csproj" />
+    <Project Path="src/Payment/SeatFlow.Payment.Api/SeatFlow.Payment.Api.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SeatFlow.Booking.IntegrationTests/SeatFlow.Booking.IntegrationTests.csproj" />
+    <Project Path="tests/SeatFlow.Booking.UnitTests/SeatFlow.Booking.UnitTests.csproj" />
+    <Project Path="tests/SeatFlow.Payment.IntegrationTests/SeatFlow.Payment.IntegrationTests.csproj" />
+    <Project Path="tests/SeatFlow.Testing/SeatFlow.Testing.csproj" />
+  </Folder>
+</Solution>

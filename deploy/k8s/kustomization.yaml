@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: seatflow
+
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - infra/postgres.yaml
+  - infra/redis.yaml
+  - infra/rabbitmq.yaml
+  - infra/observability.yaml
+  - apps/catalog.yaml
+  - apps/booking.yaml
+  - apps/payment.yaml
+  - apps/notification.yaml
+  - apps/gateway.yaml
+
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - init.sql=postgres-init.sql
+  - name: app-config
+    literals:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://dashboard:18889
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - ConnectionStrings__Redis=redis:6379
+      - Auth__MetadataAddress=http://gateway:8080/.well-known/openid-configuration
+      # Migrations run in an init container (`dotnet App.dll migrate`), not in every replica at startup.
+      - Database__MigrateOnStartup=false
+
+# Local images built by scripts/kind-up and loaded with `kind load docker-image`.
+# CI or a registry deploy only changes these tags: `kustomize edit set image seatflow/booking=ghcr.io/...:sha`.
+images:
+  - name: seatflow/catalog
+    newTag: dev
+  - name: seatflow/booking
+    newTag: dev
+  - name: seatflow/payment
+    newTag: dev
+  - name: seatflow/notification
+    newTag: dev
+  - name: seatflow/gateway
+    newTag: dev
